@@ -129,6 +129,10 @@ function TickerPrototype:Cancel()
     self._cancelled = true;
 end
 
+function GetSchoolString(schoolmask)
+	return private.LOSS_OF_CONTROL_SPELL_SCHOOLS_DATA[schoolmask]
+end
+
 function private.SetSlashCMD(name, func, ...)
 	SlashCmdList[name] = func;
 	for i=1, select('#', ...) do

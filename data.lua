@@ -31,7 +31,6 @@ private.LOSS_OF_CONTROL_SPELL_DATA = {
     [1121] = 12,
     [1330] = 9,
     [1513] = 5,
-	[1766] = 26,
     [1776] = 14,
     [1777] = 14,
     [1833] = 12,
@@ -2200,7 +2199,7 @@ private.LOSS_OF_CONTROL_SPELL_DATA = {
 };
 
 private.LOSS_OF_CONTROL_INTERRUPTS_DATA = {
-    [1766] = {duration = 5, name = "Kick", icon = "Interface\\Icons\\Ability_Kick"},
+        [1766] = {duration = 5, name = "Kick", icon = "Interface\\Icons\\Ability_Kick"},
 	[6552] = {duration = 4, name = "Pummel", icon = "Interface\\Icons\\inv_gauntlets_04"},
 	[72] = {duration = 6, name = "Shield Bash", icon = "Interface\\Icons\\ability_warrior_shieldbash"},
 	[47528] = {duration = 4, name = "Mind Freeze", icon = "Interface\\Icons\\spell_deathknight_mindfreeze"},

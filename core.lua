@@ -17,6 +17,8 @@ local GetTime = GetTime;
 local UnitAura = UnitAura;
 local UnitAffectingCombat = UnitAffectingCombat;
 local GetSchoolString = GetSchoolString;
+local LOSS_OF_CONTROL_DISPLAY_INTERRUPT_SCHOOL = "%s Locked"
+local lockoutSchool = 0
 
 local MECHANIC_CHARM			= 1;
 local MECHANIC_DISORIENTED      = 2;
@@ -129,6 +131,7 @@ local tempLossOfControlData = {};
 function LossOfControlFrame_OnLoad(self)
 	self:RegisterEvent("UNIT_AURA");
 	self:RegisterEvent("VARIABLES_LOADED");
+	self:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED");
 
 	self.AnimPlay = LossOfControlFrame_AnimPlay;
 	self.AnimStop = LossOfControlFrame_AnimStop;
@@ -143,7 +146,7 @@ end
 local function LossOfControlFrame_UpdateData()
 	lossOfControlData = {};
 	
-	for _, spellData in pairs(tempLossOfControlData) do
+	for _, spellData in pairs(tempLossOfControlData) do	
 		tInsert(lossOfControlData, spellData);
 	end
 
@@ -182,7 +185,7 @@ function LossOfControlGetEventInfo(index)
 	local startTime 	= data.startTime;
 	local timeRemaining = data.expirationTime ~= 0 and data.expirationTime - GetTime() or nil;
 	local duration 		= data.duration;
-	local lockoutSchool = "lockoutSchool";
+	local lockoutSchool = lockoutSchool;
 	local priority 		= data.priority;
 	local displayType 	= data.displayType;
 
@@ -195,6 +198,7 @@ local function LossOfControlAddOrUpdateDebuff(spellID, name, icon, duration, exp
 		local startTime = GetTime();
 		local priority = LOCMechanicData[LOCSpellMechanic][2] or 0;
 		local text = LOCMechanicData[LOCSpellMechanic][1] or name;
+		
 
 		tempLossOfControlData[spellID] = {
 			locType 		= LOCSpellMechanic,
@@ -206,7 +210,8 @@ local function LossOfControlAddOrUpdateDebuff(spellID, name, icon, duration, exp
 			duration 		= duration,
 			priority 		= priority,
 			expirationTime  = expirationTime,
-			displayType 	= DISPLAY_TYPE_FULL
+			displayType 	= DISPLAY_TYPE_FULL,
+			lockoutSchool	= lockoutSchool
 		};
 		LossOfControlFrame_UpdateData();
 	end
@@ -217,9 +222,40 @@ local function LossOfControlRemoveDebuff(spellID)
 	LossOfControlFrame_UpdateData();
 end
 
+local function LossOfControlAddOrUpdateKickIcon(self, spellID, name, icon, duration, expirationTime, lockoutSchool) 
+	local timer = Timer.NewTimer(duration, function()
+		if self.spellID == spellID then
+			tempLossOfControlData[spellID] = nil;
+			--LossOfControlFrame_Lock(self);
+			LossOfControlRemoveDebuff(spellID);
+			--self:Hide();
+		end
+	end)
+	
+	tempLossOfControlData[spellID] = {
+		locType 		= LOCSpellMechanic,
+		spellID 		= spellID,
+		text			= text,
+		name 			= name,
+		iconTexture		= icon,
+		startTime 		= GetTime(),
+		duration		= duration,
+		priority 		= priority,
+		lockoutSchool	= lockoutSchool,
+		expirationTime 	= expirationTime,
+		displayType		= DISPLAY_TYPE_FULL,
+		lockoutSchool	= lockoutSchool 
+	};
+
+	local data = tempLossOfControlData[spellID];
+	LossOfControlAddOrUpdateDebuff(data.spellID, data.name, data.iconTexture, data.duration, data.expirationTime);
+	
+	LossOfControlFrame_UpdateDisplay(self);
+end
+
 local auraTrackerStorage = {};
-function LossOfControlFrame_OnEvent(self, event, unit)
-	if event == "UNIT_AURA" and unit == "player" then
+function LossOfControlFrame_OnEvent(self, event, ...)
+	if event == "UNIT_AURA" and select(1,...) == "player" then
 		for i=1, 40 do
 			local name, _, icon, _, _, duration, expirationTime, _, _, _, spellID = UnitAura("player", i, "HARMFUL");
 			if name and spellID then
@@ -241,6 +277,47 @@ function LossOfControlFrame_OnEvent(self, event, unit)
 		for spellID, auraData in pairs(auraTrackerStorage) do
 			if not auraData[1] then
 				auraTrackerStorage[spellID][1] = true;
+			else
+				LossOfControlRemoveDebuff(spellID);
+				auraTrackerStorage[spellID] = nil;
+			end
+		end
+	end
+	
+	if event == "COMBAT_LOG_EVENT_UNFILTERED" and select(2,...) == "SPELL_INTERRUPT" and select(8,...) == 1297 then 
+			local _, _, _, _, _, _, _, _, spellID, spellName, spellSchool, extraSpellID, extraSpellName, extraSpellSchool = ...
+			if private.LOSS_OF_CONTROL_INTERRUPTS_DATA[spellID] then	
+				local name = spellName
+				local icon = private.LOSS_OF_CONTROL_INTERRUPTS_DATA[spellID].icon
+				local duration = private.LOSS_OF_CONTROL_INTERRUPTS_DATA[spellID].duration
+				local expirationTime = GetTime() + duration
+				lockoutSchool = extraSpellSchool
+
+				local hasAura = auraTrackerStorage[spellID] and auraTrackerStorage[spellID][1];
+				if hasAura == nil then
+					LossOfControlAddOrUpdateKickIcon(self, spellID, name, icon, duration, expirationTime, lockoutSchool);
+					--[[
+					C_Timer.After(duration, function()
+						LossOfControlRemoveDebuff(spellID)
+						tempLossOfControlData[spellID] = nil;
+					end)
+					--]]
+				else
+					local savedDuration = auraTrackerStorage[spellID][2] - GetTime();
+					local newBuffDuration = expirationTime - GetTime();				
+
+					if newBuffDuration > savedDuration then
+						LossOfControlAddOrUpdateKickIcon(self, spellID, name, icon, duration, expirationTime, lockoutSchool);
+					end
+				end
+				auraTrackerStorage[spellID] = {false, expirationTime};
+			end
+
+		for spellID, auraData in pairs(auraTrackerStorage) do
+			if not auraData[1] then
+				auraTrackerStorage[spellID][1] = true;
+				print(spellID)
+				print(auraData)
 			else
 				LossOfControlRemoveDebuff(spellID);
 				auraTrackerStorage[spellID] = nil;
@@ -298,7 +375,7 @@ function LossOfControlFrame_SetUpDisplay(self, animate, locType, spellID, text, 
 	end
 	if (text and displayType ~= DISPLAY_TYPE_NONE) then
 		text = TEXT_OVERRIDE[spellID] or text;
-		if (locType == "SCHOOL_INTERRUPT") then
+		if (locType == 26) then 
 			-- replace text with school-specific lockout text
 			if (lockoutSchool and lockoutSchool ~= 0) then
 				text = string.format(LOSS_OF_CONTROL_DISPLAY_INTERRUPT_SCHOOL, GetSchoolString(lockoutSchool));
